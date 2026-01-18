@@ -124,11 +124,22 @@ function updateActiveNav() {
 
     navItems.forEach(item => {
         const itemPath = item.getAttribute('href');
-        if (path === itemPath || (path === '' && itemPath === 'index.php')) {
-            item.classList.add('text-blue-500');
+        let isActive = false;
+
+        // Exact match
+        if (path === itemPath) isActive = true;
+        // Home fallback
+        else if ((path === '' || path === 'index.php') && itemPath === 'index.php') isActive = true;
+        // Transactions -> Home
+        else if (path === 'transactions.php' && itemPath === 'index.php') isActive = true;
+        // Categories -> Profile
+        else if (path === 'categories.php' && itemPath === 'profile.php') isActive = true;
+
+        if (isActive) {
+            item.classList.add('text-blue-500', 'dark:text-dark-accent');
             item.classList.remove('text-gray-400');
         } else {
-            item.classList.remove('text-blue-500');
+            item.classList.remove('text-blue-500', 'dark:text-dark-accent');
             item.classList.add('text-gray-400');
         }
     });
@@ -146,10 +157,53 @@ function initCurrentPage() {
 
     if (document.getElementById('profileForm')) initProfile();
     if (document.getElementById('filterForm')) initTransactions();
-    if (document.getElementById('addCatForm')) initCategories();
+    if (document.getElementById('manageCatForm')) initCategories();
 }
 
 function initCategories() {
+
+    // Open Add Modal
+    window.openAddCategoryModal = function () {
+        const modal = document.getElementById('manageCatModal');
+        document.getElementById('modalTitle').innerText = "Tambah Kategori";
+        document.getElementById('catAction').value = "add";
+        document.getElementById('catId').value = "";
+        document.getElementById('catName').value = "";
+
+        // Reset active state
+        document.getElementById('typeExpense').checked = true;
+
+        // Reset icon to default or first
+        const icons = document.querySelectorAll('input[name="icon"]');
+        if (icons.length > 0) icons[0].checked = true;
+
+        modal.classList.remove('hidden');
+    }
+
+    // Open Edit Modal
+    window.openEditCategory = function (id, name, type, icon) {
+        const modal = document.getElementById('manageCatModal');
+        document.getElementById('modalTitle').innerText = "Edit Kategori";
+        document.getElementById('catAction').value = "update";
+        document.getElementById('catId').value = id;
+        document.getElementById('catName').value = name;
+
+        // Set Type
+        if (type === 'expense') document.getElementById('typeExpense').checked = true;
+        else document.getElementById('typeIncome').checked = true;
+
+        // Set Icon
+        const iconInput = document.querySelector(`input[name="icon"][value="${icon}"]`);
+        if (iconInput) iconInput.checked = true;
+
+        modal.classList.remove('hidden');
+    }
+
+    // Close Modal
+    window.closeManageModal = function () {
+        document.getElementById('manageCatModal').classList.add('hidden');
+    }
+
     // Delete Logic
     window.deleteCategory = function (id) {
         Swal.fire({
@@ -175,13 +229,13 @@ function initCategories() {
         });
     };
 
-    // Add Logic
-    const form = document.getElementById('addCatForm');
+    // Add/Update Logic
+    const form = document.getElementById('manageCatForm');
     if (form) {
         form.onsubmit = function (e) {
             e.preventDefault();
             const formData = new FormData(this);
-            formData.append('action', 'add');
+            // Action is already in formData from hidden input
 
             // Loading state
             const btn = form.querySelector('button');
@@ -196,7 +250,7 @@ function initCategories() {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('addCatModal').classList.add('hidden');
+                        window.closeManageModal();
                         loadPage(window.location.href, false);
                     } else {
                         Swal.fire('Error', data.error, 'error');
@@ -425,26 +479,37 @@ function initDashboard() {
     });
 }
 
-// Add Modal Logic
+// Add/Edit Modal Logic
 function initAddModal() {
     const form = document.getElementById('addExpenseForm');
     if (!form) return;
 
+    // Formatting Logic
+    const amountInput = document.getElementById('transAmount');
+    if (amountInput) {
+        amountInput.addEventListener('keyup', function (e) {
+            let value = this.value.replace(/\D/g, '');
+            this.value = value ? new Intl.NumberFormat('id-ID').format(value) : '';
+        });
+    }
+
     form.onsubmit = async (e) => {
         e.preventDefault();
         const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerText;
         submitBtn.disabled = true;
+        submitBtn.innerText = 'Menyimpan...';
 
         try {
             const formData = new FormData(form);
-            const response = await fetch('api/add_transaction.php', {
+            const response = await fetch('api/manage_transaction.php', {
                 method: 'POST', body: formData
             });
             const result = await response.json();
 
             if (result.success) {
                 Swal.fire({
-                    icon: 'success', title: 'Disimpan', toast: true,
+                    icon: 'success', title: 'Berhasil Disimpan', toast: true,
                     position: 'top-end', showConfirmButton: false, timer: 1500
                 });
                 closeAddModal();
@@ -457,21 +522,117 @@ function initAddModal() {
             Swal.fire('Error', err.message, 'error');
         } finally {
             submitBtn.disabled = false;
+            submitBtn.innerText = originalText;
         }
     };
 }
 
-// Shared Modal Functions (Global)
+// Global: Open Add Modal (Reset)
 window.openAddModal = function () {
     const m = document.getElementById('addModal');
     const c = document.getElementById('addModalContent');
     m.classList.remove('hidden');
     setTimeout(() => c.classList.remove('translate-y-full'), 10);
-    // Init type toggle logic again just in case
+
+    // Reset Form
+    document.getElementById('addExpenseForm').reset();
+    document.getElementById('transAction').value = 'add';
+    document.getElementById('transId').value = '';
+    document.getElementById('transModalTitle').innerText = 'Tambah Transaksi';
+    document.getElementById('btnDeleteTrans').classList.add('hidden');
+    document.getElementById('transDate').value = new Date().toISOString().split('T')[0];
+
+    // Fetch latest categories
+    fetchCategories();
+};
+
+// Global: Open Edit Modal
+window.openEditTransaction = function (id, amount, date, catId, desc, type) {
+    const m = document.getElementById('addModal');
+    const c = document.getElementById('addModalContent');
+
+    // Fetch categories first to ensure select is populated
+    fetchCategories();
+
+    // Small delay to allow categories to load (or use promise if refactored, but timeout is simpler for now)
+    setTimeout(() => {
+        // Populate
+        document.getElementById('transAction').value = 'update';
+        document.getElementById('transId').value = id;
+        document.getElementById('transModalTitle').innerText = 'Edit Transaksi';
+        document.getElementById('transAmount').value = new Intl.NumberFormat('id-ID').format(amount);
+        document.getElementById('transDate').value = date;
+        document.getElementById('transDesc').value = desc;
+        document.getElementById('btnDeleteTrans').classList.remove('hidden');
+
+        // Set Type & Category
+        window.setType(type); // This switches the toggle UI
+        const select = document.getElementById('category_select');
+        select.value = catId; // Set selected category
+    }, 100);
+
+    m.classList.remove('hidden');
+    setTimeout(() => c.classList.remove('translate-y-full'), 10);
+};
+
+// Global: Delete Transaction
+window.deleteTransaction = function () {
+    const id = document.getElementById('transId').value;
+    Swal.fire({
+        title: 'Hapus Transaksi?',
+        text: "Data tidak bisa dikembalikan.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#EF4444',
+        confirmButtonText: 'Ya, Hapus'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('api/manage_transaction.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=delete&id=' + id
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        closeAddModal();
+                        loadPage(window.location.href, false);
+                        Swal.fire('Terhapus!', '', 'success');
+                    } else {
+                        Swal.fire('Error', data.error, 'error');
+                    }
+                });
+        }
+    });
+};
+
+window.closeAddModal = function () {
+    const m = document.getElementById('addModal');
+    const c = document.getElementById('addModalContent');
+    c.classList.add('translate-y-full');
+    setTimeout(() => m.classList.add('hidden'), 300);
+}
+
+// Helper: Fetch and Populate Categories
+function fetchCategories() {
+    fetch('api/manage_category.php?action=list')
+        .then(res => res.json())
+        .then(res => {
+            if (res.success) {
+                // Store globally for toggle logic
+                window.incomeCats = res.data.filter(c => c.type === 'income');
+                window.expenseCats = res.data.filter(c => c.type === 'expense');
+
+                // Re-init Type Logic
+                initTypeToggle();
+            }
+        });
+}
+
+function initTypeToggle() {
     window.setType = function (type) {
         document.getElementById('type-input').value = type;
-        // ... styling logic duplicated from index.php ...
-        // Ideally this should be centralized too. 
+
         const btnExpense = document.getElementById('btn-expense');
         const btnIncome = document.getElementById('btn-income');
 
@@ -480,24 +641,19 @@ window.openAddModal = function () {
             btnExpense.classList.remove('text-gray-500');
             btnIncome.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
             btnIncome.classList.add('text-gray-500');
-            populateCats(expenseCats);
+            populateCats(window.expenseCats || []);
         } else {
             btnIncome.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
             btnIncome.classList.remove('text-gray-500');
             btnExpense.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
             btnExpense.classList.add('text-gray-500');
-            populateCats(incomeCats);
+            populateCats(window.incomeCats || []);
         }
     };
-    // Trigger default
-    window.setType('expense');
-};
 
-window.closeAddModal = function () {
-    const m = document.getElementById('addModal');
-    const c = document.getElementById('addModalContent');
-    c.classList.add('translate-y-full');
-    setTimeout(() => m.classList.add('hidden'), 300);
+    // Check current selected type or default to expense
+    const currentType = document.getElementById('type-input').value || 'expense';
+    window.setType(currentType);
 }
 
 // Helper: Populate Categories (needs data)
@@ -511,4 +667,101 @@ function populateCats(cats) {
         opt.textContent = cat.name;
         select.appendChild(opt);
     });
+}
+
+// Category Management
+window.openManageCategoryModal = function () {
+    const m = document.getElementById('manageCatModal');
+    const f = document.getElementById('manageCatForm');
+    f.reset();
+    document.getElementById('catAction').value = 'add';
+    document.getElementById('catId').value = '';
+    document.getElementById('modalTitle').innerText = 'Tambah Kategori';
+    m.classList.remove('hidden');
+};
+
+window.openEditCategory = function (id, name, type, icon) {
+    const m = document.getElementById('manageCatModal');
+
+    document.getElementById('catAction').value = 'update';
+    document.getElementById('catId').value = id;
+    document.getElementById('catName').value = name;
+    document.getElementById('modalTitle').innerText = 'Edit Kategori';
+
+    // Set Type
+    if (type === 'expense') document.getElementById('typeExpense').checked = true;
+    else document.getElementById('typeIncome').checked = true;
+
+    // Set Icon
+    // Uncheck all first
+    document.querySelectorAll('input[name="icon"]').forEach(i => i.checked = false);
+    const iconInput = document.querySelector(`input[name="icon"][value="${icon}"]`);
+    if (iconInput) iconInput.checked = true;
+
+    m.classList.remove('hidden');
+};
+
+window.closeManageModal = function () {
+    const m = document.getElementById('manageCatModal');
+    m.classList.add('hidden');
+};
+
+window.deleteCategory = function (id) {
+    Swal.fire({
+        title: 'Hapus Kategori?',
+        text: "Kategori akan dihapus permanen.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#EF4444',
+        confirmButtonText: 'Ya, Hapus'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('api/manage_category.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=delete&id=' + id
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire('Terhapus!', '', 'success');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } else {
+                        Swal.fire('Error', data.error, 'error');
+                    }
+                });
+        }
+    });
+};
+
+// Handle Category Form Submit
+const catForm = document.getElementById('manageCatForm');
+if (catForm) {
+    catForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = catForm.querySelector('button[type="submit"]');
+        const originalText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = 'Menyimpan...';
+
+        try {
+            const formData = new FormData(catForm);
+            const response = await fetch('api/manage_category.php', {
+                method: 'POST', body: formData
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                Swal.fire({ icon: 'success', title: 'Berhasil', showConfirmButton: false, timer: 1000 });
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+    };
 }

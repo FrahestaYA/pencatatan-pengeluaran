@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Daily Expense Tracker</title>
+    <title>Pengeluaran Kita</title>
+    <link rel="icon" type="image/png" href="https://img.icons8.com/fluency/48/money-bag.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -27,6 +28,7 @@
                     colors: {
                         primary: '#3B82F6', // Blue 500
                         secondary: '#10B981', // Emerald 500
+                        'dark-accent': '#F97316', // Orange 500 (True Orange)
                     }
                 }
             }
